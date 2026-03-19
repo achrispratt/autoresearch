@@ -1,0 +1,122 @@
+diff --git a/src/components/TimelineCard.tsx b/src/components/TimelineCard.tsx
+index a3b0bd5..b19feb8 100644
+--- a/src/components/TimelineCard.tsx
++++ b/src/components/TimelineCard.tsx
+@@ -1,56 +1,61 @@
+-"use client";
+-
+-import { useEffect, useRef, useState } from "react";
+-import type { TimelineEntry } from "@/content/types";
+-
+-export function TimelineCard({ entry }: { entry: TimelineEntry }) {
+-  const ref = useRef<HTMLDivElement>(null);
+-  const [hasAnimated, setHasAnimated] = useState(false);
+-  const [jsReady, setJsReady] = useState(false);
+-
+-  useEffect(() => {
+-    setJsReady(true);
+-  }, []);
+-
+-  useEffect(() => {
+-    const el = ref.current;
+-    if (!el || !jsReady) return;
+-
+-    const observer = new IntersectionObserver(
+-      ([observerEntry]) => {
+-        if (observerEntry.isIntersecting) {
+-          setHasAnimated(true);
+-          observer.unobserve(el);
+-        }
+-      },
+-      { threshold: 0.15 }
+-    );
+-
+-    observer.observe(el);
+-    return () => observer.disconnect();
+-  }, [jsReady]);
+-
+-  return (
+-    <div
+-      ref={ref}
+-      className={`md:border-l-2 border-border md:pl-8 pb-12 relative transition-[opacity,transform] duration-300 ease-out ${
+-        !jsReady || hasAnimated ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+-      }`}
+-    >
+-      {/* Timeline dot */}
+-      <div className="hidden md:block absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-border" />
+-
+-      <span className="text-secondary text-xs tracking-wide uppercase">
+-        {entry.era}
+-      </span>
+-      <h2 className="font-serif text-xl font-bold mt-1">
+-        {entry.organization}
+-      </h2>
+-      <p className="text-secondary text-sm mb-3">{entry.role}</p>
+-      <p className="text-foreground text-base leading-relaxed mb-3">
+-        {entry.narrative}
+-      </p>
+-      <p className="text-accent text-sm font-medium">{entry.proofPoint}</p>
+-    </div>
+-  );
+-}
++"use client";
++
++import { useEffect, useRef, useState, useSyncExternalStore } from "react";
++import type { TimelineEntry } from "@/content/types";
++
++const emptySubscribe = () => () => {};
++function useHydrated() {
++  return useSyncExternalStore(
++    emptySubscribe,
++    () => true,
++    () => false
++  );
++}
++
++export function TimelineCard({ entry }: { entry: TimelineEntry }) {
++  const containerRef = useRef<HTMLDivElement>(null);
++  const [hasAnimated, setHasAnimated] = useState(false);
++  const hydrated = useHydrated();
++
++  useEffect(() => {
++    const el = containerRef.current;
++    if (!el) return;
++
++    const observer = new IntersectionObserver(
++      ([observerEntry]) => {
++        if (observerEntry.isIntersecting) {
++          setHasAnimated(true);
++          observer.unobserve(el);
++        }
++      },
++      { threshold: 0.15 }
++    );
++
++    observer.observe(el);
++    return () => observer.disconnect();
++  }, []);
++
++  return (
++    <div
++      ref={containerRef}
++      className={`md:border-l-2 border-border md:pl-8 pb-12 relative transition-[opacity,transform] duration-300 ease-out ${
++        !hydrated || hasAnimated ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
++      }`}
++    >
++      {/* Timeline dot */}
++      <div className="hidden md:block absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-border" />
++
++      <span className="text-secondary text-xs tracking-wide uppercase">
++        {entry.era}
++      </span>
++      <h2 className="font-serif text-xl font-bold mt-1">
++        {entry.organization}
++      </h2>
++      <p className="text-secondary text-sm mb-3">{entry.role}</p>
++      <p className="text-foreground text-base leading-relaxed mb-3">
++        {entry.narrative}
++      </p>
++      <p className="text-accent text-sm font-medium">{entry.proofPoint}</p>
++    </div>
++  );
++}

@@ -1,0 +1,186 @@
+diff --git a/src/app/api/analytics/data/route.ts b/src/app/api/analytics/data/route.ts
+index a29d1db..d5ba9a8 100644
+--- a/src/app/api/analytics/data/route.ts
++++ b/src/app/api/analytics/data/route.ts
+@@ -1,10 +1,16 @@
+ import { getAnalyticsSummary } from "@/lib/analytics";
++import { timingSafeEqual } from "node:crypto";
++
++function safeCompare(a: string, b: string): boolean {
++  if (a.length !== b.length) return false;
++  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
++}
+ 
+ export async function GET(req: Request): Promise<Response> {
+-  const authHeader = req.headers.get("Authorization");
+-  const password = process.env.ANALYTICS_PASSWORD;
++  const authHeader = req.headers.get("Authorization") ?? "";
++  const password = process.env.ANALYTICS_PASSWORD ?? "";
+ 
+-  if (!password || authHeader !== password) {
++  if (!password || !authHeader || !safeCompare(authHeader, password)) {
+     return Response.json({ error: "Unauthorized" }, { status: 401 });
+   }
+ 
+diff --git a/src/components/demo/chat-interface.tsx b/src/components/demo/chat-interface.tsx
+index 58e14d5..c5f05c1 100644
+--- a/src/components/demo/chat-interface.tsx
++++ b/src/components/demo/chat-interface.tsx
+@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
+ import { DefaultChatTransport } from "ai";
+ import type { UIMessage } from "ai";
+ import { StreamingIndicator } from "./streaming-indicator";
++import { markdownToHtml } from "@/lib/markdown";
+ 
+ interface ChatInterfaceProps {
+   toolName: string;
+@@ -188,33 +189,6 @@ export function ChatInterface({
+   );
+ }
+ 
+-/** Lightweight markdown → HTML for Claude's response text */
+-function markdownToHtml(md: string): string {
+-  return md
+-    .replace(/&/g, "&amp;")
+-    .replace(/</g, "&lt;")
+-    .replace(/>/g, "&gt;")
+-    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
+-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+-    .replace(/^---$/gm, "<hr />")
+-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+-    .replace(/^- (.+)$/gm, "<li>$1</li>")
+-    .replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>")
+-    .replace(/\n\n/g, "</p><p>")
+-    .replace(/\n/g, "<br />")
+-    .replace(/^/, "<p>")
+-    .replace(/$/, "</p>")
+-    .replace(/<p><\/p>/g, "")
+-    .replace(/<p>(<h[1-4]>)/g, "$1")
+-    .replace(/(<\/h[1-4]>)<\/p>/g, "$1")
+-    .replace(/<p>(<hr \/>)<\/p>/g, "$1")
+-    .replace(/<p>(<ul>)/g, "$1")
+-    .replace(/(<\/ul>)<\/p>/g, "$1");
+-}
+-
+ /** Extracts all text content from a UIMessage's parts */
+ function extractText(message: UIMessage): string {
+   return message.parts
+diff --git a/src/components/demo/roi-estimator.tsx b/src/components/demo/roi-estimator.tsx
+index e60e5a5..9819d23 100644
+--- a/src/components/demo/roi-estimator.tsx
++++ b/src/components/demo/roi-estimator.tsx
+@@ -4,43 +4,7 @@ import { useState, useCallback } from "react";
+ import { z } from "zod/v4";
+ import { StreamingIndicator } from "./streaming-indicator";
+ import { STREAMING_MESSAGES } from "@/lib/prompts";
+-
+-/** Lightweight markdown → HTML for Claude's response text. Handles headings, bold, lists, hrs. */
+-function markdownToHtml(md: string): string {
+-  return md
+-    .replace(/&/g, "&amp;")
+-    .replace(/</g, "&lt;")
+-    .replace(/>/g, "&gt;")
+-    // Headings (must come before bold since # lines may contain **)
+-    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
+-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+-    // Horizontal rules
+-    .replace(/^---$/gm, "<hr />")
+-    // Bold
+-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+-    // Italic
+-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+-    // Unordered list items
+-    .replace(/^- (.+)$/gm, "<li>$1</li>")
+-    // Wrap consecutive <li> in <ul>
+-    .replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>")
+-    // Paragraphs: double newlines
+-    .replace(/\n\n/g, "</p><p>")
+-    // Single newlines within paragraphs
+-    .replace(/\n/g, "<br />")
+-    // Wrap in paragraph
+-    .replace(/^/, "<p>")
+-    .replace(/$/, "</p>")
+-    // Clean up empty paragraphs
+-    .replace(/<p><\/p>/g, "")
+-    .replace(/<p>(<h[1-4]>)/g, "$1")
+-    .replace(/(<\/h[1-4]>)<\/p>/g, "$1")
+-    .replace(/<p>(<hr \/>)<\/p>/g, "$1")
+-    .replace(/<p>(<ul>)/g, "$1")
+-    .replace(/(<\/ul>)<\/p>/g, "$1");
+-}
++import { markdownToHtml } from "@/lib/markdown";
+ 
+ const PLANT_TYPES = [
+   "Petroleum Refinery",
+diff --git a/src/lib/chat-handler.ts b/src/lib/chat-handler.ts
+index f15e7ac..e52fbc1 100644
+--- a/src/lib/chat-handler.ts
++++ b/src/lib/chat-handler.ts
+@@ -5,15 +5,6 @@ import { logAnalyticsEvent } from "./analytics";
+ 
+ const MODEL = "claude-sonnet-4-6";
+ 
+-const inputSchema = z.object({
+-  messages: z.array(
+-    z.object({
+-      role: z.enum(["user", "assistant"]),
+-      content: z.string().min(1).max(2000),
+-    })
+-  ),
+-});
+-
+ const roiInputSchema = z.object({
+   plantType: z.string().min(1),
+   engineerCount: z.number().int().positive().max(10000),
+@@ -148,7 +139,9 @@ Provide a detailed ROI analysis with specific dollar estimates.`;
+           type: "chat_handler_error",
+           tool: config.toolName,
+           error: message,
+-          stack: error instanceof Error ? error.stack?.slice(0, 500) : undefined,
++          ...(process.env.NODE_ENV === "development" && {
++            stack: error instanceof Error ? error.stack?.slice(0, 500) : undefined,
++          }),
+           timestamp,
+         })
+       );
+diff --git a/src/lib/markdown.ts b/src/lib/markdown.ts
+new file mode 100644
+index 0000000..2ace258
+--- /dev/null
++++ b/src/lib/markdown.ts
+@@ -0,0 +1,30 @@
++/**
++ * Lightweight markdown → HTML for Claude API response text.
++ * Handles headings, bold, italic, lists, and horizontal rules.
++ * HTML entities are escaped first to prevent XSS.
++ */
++export function markdownToHtml(md: string): string {
++  return md
++    .replace(/&/g, "&amp;")
++    .replace(/</g, "&lt;")
++    .replace(/>/g, "&gt;")
++    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
++    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
++    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
++    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
++    .replace(/^---$/gm, "<hr />")
++    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
++    .replace(/\*(.+?)\*/g, "<em>$1</em>")
++    .replace(/^- (.+)$/gm, "<li>$1</li>")
++    .replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>")
++    .replace(/\n\n/g, "</p><p>")
++    .replace(/\n/g, "<br />")
++    .replace(/^/, "<p>")
++    .replace(/$/, "</p>")
++    .replace(/<p><\/p>/g, "")
++    .replace(/<p>(<h[1-4]>)/g, "$1")
++    .replace(/(<\/h[1-4]>)<\/p>/g, "$1")
++    .replace(/<p>(<hr \/>)<\/p>/g, "$1")
++    .replace(/<p>(<ul>)/g, "$1")
++    .replace(/(<\/ul>)<\/p>/g, "$1");
++}

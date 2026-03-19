@@ -1,0 +1,35 @@
+diff --git a/src/components/layout/navbar.tsx b/src/components/layout/navbar.tsx
+index 21f7368..05eab80 100644
+--- a/src/components/layout/navbar.tsx
++++ b/src/components/layout/navbar.tsx
+@@ -146,7 +146,7 @@ export function Navbar({ alwaysVisible }: { alwaysVisible?: boolean } = {}) {
+               }}
+               aria-current={activeSection === item.href.slice(1) ? "location" : undefined}
+               className={cn(
+-                "relative px-3 py-1.5 text-xs font-medium transition-colors",
++                "relative px-3 py-2.5 text-xs font-medium transition-colors",
+                 activeSection === item.href.slice(1)
+                   ? "text-brand-orange"
+                   : "text-text-muted hover:text-text-primary",
+diff --git a/src/components/ui/persistent-cta-bar.tsx b/src/components/ui/persistent-cta-bar.tsx
+index 60e3263..8c52553 100644
+--- a/src/components/ui/persistent-cta-bar.tsx
++++ b/src/components/ui/persistent-cta-bar.tsx
+@@ -29,7 +29,7 @@ export function PersistentCtaBar() {
+         <div className="flex w-full items-center justify-end gap-4 sm:w-auto">
+           <a
+             href="mailto:christopher.m.pratt@outlook.com"
+-            className="rounded-md bg-brand-orange px-4 py-2 text-sm font-medium text-white transition-all hover:bg-brand-orange/90 active:scale-[0.98]"
++            className="rounded-md bg-brand-orange px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-brand-orange/90 active:scale-[0.98]"
+           >
+             Get in touch
+           </a>
+@@ -37,7 +37,7 @@ export function PersistentCtaBar() {
+             href="https://www.linkedin.com/in/christophermpratt/"
+             target="_blank"
+             rel="noopener noreferrer"
+-            className="text-text-muted transition-colors hover:text-text-primary"
++            className="-m-2 p-2 text-text-muted transition-colors hover:text-text-primary"
+             aria-label="LinkedIn profile"
+           >
+             <svg

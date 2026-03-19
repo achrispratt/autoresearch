@@ -1,0 +1,302 @@
+diff --git a/.claude/worktrees/agent-a194d658 b/.claude/worktrees/agent-a194d658
+new file mode 160000
+index 0000000..3d54b69
+--- /dev/null
++++ b/.claude/worktrees/agent-a194d658
+@@ -0,0 +1 @@
++Subproject commit 3d54b69605f83627108815b29d2d1c59c77cb658
+diff --git a/.claude/worktrees/agent-a2429722 b/.claude/worktrees/agent-a2429722
+new file mode 160000
+index 0000000..1005c20
+--- /dev/null
++++ b/.claude/worktrees/agent-a2429722
+@@ -0,0 +1 @@
++Subproject commit 1005c20be5b49456b0ced31664c059c381e2acdb
+diff --git a/.claude/worktrees/agent-a47dbf25 b/.claude/worktrees/agent-a47dbf25
+new file mode 160000
+index 0000000..80f4f17
+--- /dev/null
++++ b/.claude/worktrees/agent-a47dbf25
+@@ -0,0 +1 @@
++Subproject commit 80f4f172c80953f5c981faaad50c9a7203c1a27f
+diff --git a/.claude/worktrees/agent-a68a3777 b/.claude/worktrees/agent-a68a3777
+new file mode 160000
+index 0000000..bd777d5
+--- /dev/null
++++ b/.claude/worktrees/agent-a68a3777
+@@ -0,0 +1 @@
++Subproject commit bd777d51db73208e7cfc588ea97f0543c8fe7df7
+diff --git a/.claude/worktrees/agent-ab62c168 b/.claude/worktrees/agent-ab62c168
+new file mode 160000
+index 0000000..3ea10a8
+--- /dev/null
++++ b/.claude/worktrees/agent-ab62c168
+@@ -0,0 +1 @@
++Subproject commit 3ea10a8d53f040506d8bc701bc933c29855b9e7e
+diff --git a/app/api/clarify/route.ts b/app/api/clarify/route.ts
+index c0de759..3c4ca30 100644
+--- a/app/api/clarify/route.ts
++++ b/app/api/clarify/route.ts
+@@ -5,8 +5,11 @@ import {
+   clarifyQuery,
+   translateQueryToCPT,
+ } from "@/lib/cpt/translate";
+-import { kbLookup } from "@/lib/kb/lookup";
+-import { writeBackClarifyResponse } from "@/lib/kb/write-back";
++import { kbLookup, getKnownCanonicals } from "@/lib/kb/lookup";
++import {
++  writeBackClarifyResponse,
++  writeSynonym,
++} from "@/lib/kb/write-back";
+ import { logKBEvent } from "@/lib/kb/events";
+ import { normalizeQuery } from "@/lib/kb/path-hash";
+ import type {
+@@ -87,13 +90,52 @@ export async function POST(request: NextRequest) {
+ 
+     // --- KB MISS — fall through to Claude ---
+     try {
++      // For initial assessments (no turns), pass known canonicals so Claude
++      // can identify synonym matches (e.g. "MRI of my knee" → "knee mri")
++      const knownCanonicals =
++        turns.length === 0 ? await getKnownCanonicals() : undefined;
++
+       const result =
+         turns.length === 0
+-          ? await assessQuery(queryText)
++          ? await assessQuery(queryText, knownCanonicals)
+           : await clarifyQuery(queryText, turns);
+ 
++      // If Claude matched this query to an existing canonical, link the
++      // synonym and serve from the existing tree instead of creating a new one
++      if (result.canonicalMatch && turns.length === 0) {
++        writeSynonym(queryText, result.canonicalMatch).catch((err) =>
++          console.error("KB synonym clustering write failed:", err)
++        );
++
++        // Try to serve from the matched tree
++        const matchedLookup = await kbLookup(result.canonicalMatch, []);
++        if (matchedLookup.hit && matchedLookup.node) {
++          if (matchedLookup.path_hash) {
++            logKBEvent({
++              pathHash: matchedLookup.path_hash,
++              eventType: "walk",
++              sessionId,
++            }).catch(() => {});
++          }
++
++          const matchedResponse = nodeToResponse(
++            matchedLookup.node.payload as
++              | KBQuestionPayload
++              | KBResolutionPayload
++          );
++
++          return NextResponse.json({
++            ...matchedResponse,
++            kbSessionId: sessionId,
++            kbPathHash: matchedLookup.path_hash,
++          });
++        }
++      }
++
+       const canonicalQuery =
+-        kbResult.canonical_query || normalizeQuery(queryText);
++        result.canonicalMatch ||
++        kbResult.canonical_query ||
++        normalizeQuery(queryText);
+ 
+       writeBackClarifyResponse({
+         originalQuery: queryText,
+diff --git a/lib/cpt/prompts.ts b/lib/cpt/prompts.ts
+index e69e7b5..23979bb 100644
+--- a/lib/cpt/prompts.ts
++++ b/lib/cpt/prompts.ts
+@@ -290,17 +290,36 @@ When you have enough information (confidence: "high"):
+ /**
+  * Initial assessment — first contact with a user query.
+  * Claude classifies the query and either returns codes or asks the first question.
++ *
++ * When knownCanonicals is provided, Claude also checks if the query is
++ * semantically equivalent to an existing canonical form (synonym clustering).
+  */
+-export function buildGuidedSearchPrompt(query: string): string {
+-  return `A patient is looking for healthcare pricing. Their query: "${query}"
++export function buildGuidedSearchPrompt(
++  query: string,
++  knownCanonicals?: string[]
++): string {
++  let prompt = `A patient is looking for healthcare pricing. Their query: "${query}"
+ 
+ Assess this query:
+ 1. Classify it (code, procedure, condition, or symptom)
+ 2. If specific enough to identify 1-3 billing codes with high confidence, return them directly
+ 3. If ambiguous, ask your FIRST clarifying question to narrow down what they need
+-4. Always include pricingPlan with baseCodeGroups + adders in your JSON
++4. Always include pricingPlan with baseCodeGroups + adders in your JSON`;
++
++  if (knownCanonicals && knownCanonicals.length > 0) {
++    prompt += `
++
++5. Check if the patient's query is semantically equivalent to one of these known queries (same medical intent, just different wording):
++${knownCanonicals.map((c) => `- "${c}"`).join("\n")}
++
++If the query matches one of the above, include "canonicalMatch": "<the matching query>" in your JSON response. Only match if the medical intent is clearly the same — "MRI of my knee" matches "knee mri", but "knee pain" does NOT match "knee mri" (pain could need many different procedures).`;
++  }
++
++  prompt += `
+ 
+ Remember: help them figure out what procedure to price-shop for. Be warm and helpful.`;
++
++  return prompt;
+ }
+ 
+ /**
+diff --git a/lib/cpt/translate.ts b/lib/cpt/translate.ts
+index 3b4d8d4..0e50e21 100644
+--- a/lib/cpt/translate.ts
++++ b/lib/cpt/translate.ts
+@@ -292,8 +292,15 @@ export async function translateQueryToCPT(
+ /**
+  * Guided search: initial assessment of a user query.
+  * Returns either high-confidence codes or the first clarifying question.
++ *
++ * When knownCanonicals is provided, Claude also checks if the query matches
++ * an existing canonical form (synonym clustering). The match is returned as
++ * canonicalMatch on the response.
+  */
+-export async function assessQuery(query: string): Promise<TranslationResponse> {
++export async function assessQuery(
++  query: string,
++  knownCanonicals?: string[]
++): Promise<TranslationResponse> {
+   const client = getAnthropicClient();
+ 
+   const message = await client.messages.create({
+@@ -301,7 +308,12 @@ export async function assessQuery(query: string): Promise<TranslationResponse> {
+     max_tokens: 1024,
+     temperature: 0,
+     system: GUIDED_SEARCH_SYSTEM_PROMPT,
+-    messages: [{ role: "user", content: buildGuidedSearchPrompt(query) }],
++    messages: [
++      {
++        role: "user",
++        content: buildGuidedSearchPrompt(query, knownCanonicals),
++      },
++    ],
+   });
+ 
+   const content = message.content[0];
+@@ -310,7 +322,15 @@ export async function assessQuery(query: string): Promise<TranslationResponse> {
+   }
+ 
+   const parsed = parseJsonResponse(content.text);
+-  return buildTranslationResponse(parsed, query);
++  const response = buildTranslationResponse(parsed, query);
++
++  // Pass through canonicalMatch if Claude identified a synonym
++  const canonicalMatch =
++    typeof parsed.canonicalMatch === "string"
++      ? parsed.canonicalMatch.trim().toLowerCase()
++      : undefined;
++
++  return { ...response, canonicalMatch };
+ }
+ 
+ /**
+diff --git a/lib/kb/lookup.ts b/lib/kb/lookup.ts
+index 34c679f..498721b 100644
+--- a/lib/kb/lookup.ts
++++ b/lib/kb/lookup.ts
+@@ -95,3 +95,34 @@ export async function kbSynonymLookup(query: string): Promise<string | null> {
+   if (error || !data) return null;
+   return data.canonical_query;
+ }
++
++/**
++ * Fetch all distinct canonical queries for synonym clustering.
++ * Used when a query misses the synonym table — Claude checks if the
++ * new phrasing matches an existing canonical.
++ *
++ * Cached in-memory for 5 minutes to avoid hitting the DB on every miss.
++ */
++let canonicalCache: { queries: string[]; fetchedAt: number } | null = null;
++const CANONICAL_CACHE_TTL_MS = 5 * 60 * 1000;
++
++export async function getKnownCanonicals(): Promise<string[]> {
++  const now = Date.now();
++  if (canonicalCache && now - canonicalCache.fetchedAt < CANONICAL_CACHE_TTL_MS) {
++    return canonicalCache.queries;
++  }
++
++  const supabase = await createClient();
++  const { data, error } = await supabase
++    .from("kb_synonyms")
++    .select("canonical_query")
++    .limit(2000);
++
++  if (error || !data) {
++    return canonicalCache?.queries || [];
++  }
++
++  const unique = [...new Set(data.map((r) => r.canonical_query))];
++  canonicalCache = { queries: unique, fetchedAt: now };
++  return unique;
++}
+diff --git a/scripts/seed-kb.ts b/scripts/seed-kb.ts
+new file mode 100644
+index 0000000..1ae58e5
+--- /dev/null
++++ b/scripts/seed-kb.ts
+@@ -0,0 +1,150 @@
++/**
++ * Seeds the KB with common healthcare procedure searches.
++ * Hits /api/clarify with turns=[] to trigger Claude assessment + KB write-back.
++ * Run: npx tsx --env-file=.env.local scripts/seed-kb.ts
++ */
++
++const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
++
++const QUERIES = [
++  // Imaging — highest volume price-shopping category
++  "MRI of the brain",
++  "shoulder MRI",
++  "back MRI",
++  "hip MRI",
++  "ankle MRI",
++  "CT scan of the chest",
++  "CT scan of the abdomen",
++  "head CT scan",
++  "chest X-ray",
++  "ankle X-ray",
++  "wrist X-ray",
++  "abdominal ultrasound",
++  "pelvic ultrasound",
++  "mammogram",
++  "breast MRI",
++  "spine MRI",
++
++  // Common procedures
++  "colonoscopy screening",
++  "upper endoscopy",
++  "blood work",
++  "comprehensive metabolic panel",
++  "CBC blood test",
++  "thyroid panel",
++  "lipid panel",
++  "urinalysis",
++  "skin biopsy",
++  "mole removal",
++  "vasectomy",
++  "hernia repair",
++  "gallbladder removal",
++  "appendectomy",
++  "tonsillectomy",
++  "cataract surgery",
++  "LASIK",
++  "carpal tunnel surgery",
++  "trigger finger release",
++
++  // Orthopedic — high cost, high search volume
++  "ACL repair",
++  "rotator cuff repair",
+
+[... truncated:      450 total lines. Showing first 300.]

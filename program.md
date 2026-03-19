@@ -20,21 +20,28 @@ To set up a new experiment, work with the user to:
 
 Once you get confirmation, kick off the experimentation.
 
-## [CONFIGURE] Domain definition
+## Domain definition
 
-Fill in this section to define what you're optimizing. Delete these instructions and replace with your specifics.
-
-**Artifact file(s):** `[the file(s) the agent modifies — e.g. system_prompt.txt, sort.py, SKILL.md]`
+**Artifact file:** `artifact.md` — a system prompt that generates git commit messages from diffs.
 
 **Evaluation command:** `bash evaluate.sh`
 
-**Primary metric:** `[metric name — e.g. accuracy, ops_per_sec, quality_score]`
+**Primary metric:** `score` — average quality rating (0-10 scale) across 12 real git diffs, scored by an LLM judge against human-written reference commit messages.
 
-**Metric direction:** `[lower_is_better or higher_is_better]`
+**Metric direction:** `higher_is_better`
 
-**Time budget per experiment:** `[e.g. 2 minutes, 30 seconds — keep it short for fast iteration]`
+**Time budget per experiment:** ~3 minutes (12 LLM calls for generation + 12 for judging)
 
-**Goal:** `[one sentence — e.g. "Get the highest accuracy score on the test suite"]`
+**Goal:** Get the highest average quality score by improving the commit message system prompt. The prompt is tested against real diffs from multiple projects spanning features, fixes, refactors, and style changes.
+
+**Test case details:** The `eval/test_cases/` directory contains 12 diff/reference pairs pulled from real repositories. The reference messages follow conventional commit format with these patterns:
+- `feat:` / `feat(scope):` for new features
+- `fix:` for bug fixes
+- `refactor:` for code restructuring
+- `style(design): FINDING-NNN —` for design audit fixes
+- `chore:` / `docs:` / `test:` for non-functional changes
+
+The judge scores on: type prefix correctness (2pts), capturing the essence of the change (3pts), conciseness/clarity (2pts), style match (2pts), and scope usage (1pt).
 
 ## Experimentation
 

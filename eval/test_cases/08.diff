@@ -1,0 +1,61 @@
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+index 8f79aa1..8191ee5 100644
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -1,7 +1,53 @@
++import Link from "next/link";
++import { ProjectCard } from "@/components/ProjectCard";
++import { projects, featuredProjectIds } from "@/content/projects";
++
++const featured = featuredProjectIds
++  .map((id) => projects.find((p) => p.id === id))
++  .filter((p): p is NonNullable<typeof p> => p != null);
++
+ export default function Home() {
+   return (
+-    <main>
+-      <h1>Chris Pratt</h1>
+-    </main>
++    <div className="px-6">
++      {/* Hero */}
++      <section className="max-w-2xl mx-auto pt-24 pb-20">
++        <h1 className="font-serif text-4xl md:text-5xl font-bold leading-tight mb-6">
++          I build things across industries most people don&rsquo;t connect.
++          <br />
++          That&rsquo;s the point.
++        </h1>
++        <p className="text-secondary text-lg">
++          Currently building ClearCost — making healthcare pricing legible.
++        </p>
++      </section>
++
++      {/* Selected Projects */}
++      <section className="max-w-3xl mx-auto pb-20">
++        <div className="grid md:grid-cols-2 gap-6">
++          {featured.map((project) => (
++            <ProjectCard key={project.id} project={project} />
++          ))}
++        </div>
++        <div className="mt-6 text-center">
++          <Link
++            href="/projects"
++            className="text-accent text-sm hover:underline"
++          >
++            All projects &rarr;
++          </Link>
++        </div>
++      </section>
++
++      {/* About Teaser */}
++      <section className="max-w-2xl mx-auto pb-24 border-t border-border pt-16">
++        <p className="text-foreground text-lg leading-relaxed mb-4">
++          Navy, refining, enterprise sales, consulting, startups — not a
++          conventional path. There&rsquo;s a pattern underneath it.
++        </p>
++        <Link href="/about" className="text-accent text-sm hover:underline">
++          Read the full arc &rarr;
++        </Link>
++      </section>
++    </div>
+   );
+ }

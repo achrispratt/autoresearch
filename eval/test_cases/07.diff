@@ -1,0 +1,48 @@
+diff --git a/src/app/about/page.tsx b/src/app/about/page.tsx
+new file mode 100644
+index 0000000..452acaf
+--- /dev/null
++++ b/src/app/about/page.tsx
+@@ -0,0 +1,42 @@
++import type { Metadata } from "next";
++import { Timeline } from "@/components/Timeline";
++import { ThreadsSection } from "@/components/ThreadsSection";
++import { timeline } from "@/content/timeline";
++import { threads } from "@/content/threads";
++
++export const metadata: Metadata = {
++  title: "About — Chris Pratt",
++};
++
++export default function AboutPage() {
++  return (
++    <div className="px-6">
++      {/* Header */}
++      <section className="max-w-2xl mx-auto pt-16 pb-16">
++        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8">
++          {/* Photo placeholder — replace with <Image> when headshot is added */}
++          <div className="w-[120px] h-[120px] md:w-[200px] md:h-[200px] rounded bg-border flex-shrink-0" />
++          <div>
++            <h1 className="font-serif text-3xl font-bold mb-4">Chris Pratt</h1>
++            <p className="text-foreground text-base leading-relaxed">
++              I&rsquo;ve been a process engineer, an enterprise seller, a
++              management consultant, and a startup founder. The common thread is
++              I keep finding the most interesting problem in the room and
++              building toward it.
++            </p>
++          </div>
++        </div>
++      </section>
++
++      {/* Timeline */}
++      <section className="max-w-2xl mx-auto pb-8">
++        <Timeline entries={timeline} />
++      </section>
++
++      {/* Threads — wider container for 2-column grid */}
++      <section className="max-w-3xl mx-auto pb-24">
++        <ThreadsSection threads={threads} />
++      </section>
++    </div>
++  );
++}
