@@ -1,7 +1,7 @@
 # Agent prompt files (generated per-session by launchers)
 AGENTS.md
 
-# Results file (untracked by design — the agent logs here during runs)
+# Results files (untracked by design — the agent logs here during runs)
 results.tsv
 
 # Run logs
@@ -10,9 +10,6 @@ run.log
 # Experimental scratch
 dev/
 worktrees/
-
-# Eval temp files
-/tmp/
 
 # Python (if using Python evaluators)
 __pycache__/

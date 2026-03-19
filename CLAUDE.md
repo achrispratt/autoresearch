@@ -1,55 +1,88 @@
 # autoloop
 
-Domain-agnostic autonomous experimentation template. Forked from [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
+Domain-agnostic autonomous experimentation. Forked from [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
 
-## What this repo is
-
-A template for running autonomous AI experiment loops on **anything with a measurable metric**. An agent modifies an artifact, evaluates it, keeps improvements, reverts failures, and repeats indefinitely.
-
-This is NOT an ML training repo. The original autoresearch proved the pattern with PyTorch/GPU training. This fork strips the ML code and provides generic scaffolding.
+An agent modifies an artifact, evaluates it, keeps improvements, reverts failures, and repeats indefinitely.
 
 ## Repo structure
 
 ```
-program.md       — THE MAIN FILE. Agent experiment loop instructions. Read this first.
-artifact.md      — Placeholder mutable artifact. Replace with whatever you're improving.
-evaluate.sh      — Placeholder evaluation harness. Configure with your scoring logic.
-examples/        — Concrete example setups for common domains.
+templates/               ← PRISTINE TEMPLATES (never modify directly)
+  program.md             ← experiment loop instructions template
+  artifact.md            ← mutable artifact template
+  evaluate.sh            ← evaluation harness template
+
+experiments/             ← ONE DIRECTORY PER EXPERIMENT (self-contained)
+  commit-messages/       ← example: commit message prompt optimization
+    program.md           ← configured loop instructions
+    artifact.md          ← the system prompt being improved
+    evaluate.sh          ← scoring harness (12 real diffs, LLM-as-judge)
+    eval/test_cases/     ← immutable test data
+  [your-experiment]/     ← create new ones from templates
+    ...
 ```
 
-## How the pattern works
+## How to start an experiment
+
+### If an experiment already exists for what the human wants:
+
+1. `cd experiments/[name]/`
+2. Read `program.md` in that directory
+3. Follow its setup and experiment loop instructions
+
+### If no existing experiment matches — create one:
+
+1. Pick a short, descriptive directory name (e.g. `code-review`, `skill-debugging`, `api-prompts`)
+2. Create the experiment directory from templates:
+   ```bash
+   EXPERIMENT="experiments/[name]"
+   mkdir -p "$EXPERIMENT/eval"
+   cp templates/program.md "$EXPERIMENT/program.md"
+   cp templates/artifact.md "$EXPERIMENT/artifact.md"
+   cp templates/evaluate.sh "$EXPERIMENT/evaluate.sh"
+   ```
+3. Work with the human to configure the three files:
+   - **program.md** — fill in the `[BRACKETED]` placeholders: experiment name, artifact description, metric, direction, time budget, goal
+   - **artifact.md** — replace the placeholder with the actual initial artifact (prompt, code, skill, config, whatever)
+   - **evaluate.sh** — replace the scaffold with actual evaluation logic. Must output `score: <number>`
+4. Create `eval/` subdirectory with test cases, expected outputs, or whatever the evaluator needs
+5. Commit the configured experiment: `git add experiments/[name]/ && git commit`
+6. Verify the evaluator works: `cd experiments/[name] && bash evaluate.sh`
+7. Then follow the `program.md` setup and loop instructions
+
+### Important rules:
+
+- **Never modify files in `templates/`.** Always copy to a new experiment directory first.
+- **Never modify `evaluate.sh` or `eval/` during an experiment run.** The evaluator is immutable while the loop is active.
+- **Each experiment is self-contained.** All paths in evaluate.sh and program.md are relative to the experiment directory.
+- **Run all commands from the experiment directory** (`cd experiments/[name]` first).
+- **results.tsv stays untracked** — don't commit it. It's the experiment log.
+- **Experiment branches use the pattern** `autoloop/[experiment-name]/<tag>` (e.g. `autoloop/commit-messages/mar19`).
+- **Completed experiments stay in the repo** for future iteration. If the human wants to resume improving a previous experiment, just create a new branch tag and keep going.
+
+## The autoloop pattern
 
 ```
-Human writes program.md (what to optimize, how to evaluate)
-       │
-       ▼
-Agent reads program.md → modifies artifact → runs evaluate.sh → checks score
-       │                                                              │
-       ├── score improved → git commit stays (keep)                   │
-       └── score worse    → git reset (revert)                        │
-       │                                                              │
-       └──────────────────── LOOP FOREVER ◄───────────────────────────┘
+┌─── Human configures ──────────────────────────────────────────┐
+│                                                               │
+│  program.md    → what to optimize, rules, loop instructions   │
+│  artifact.md   → initial version of the thing being improved  │
+│  evaluate.sh   → how to score it (immutable during runs)      │
+│  eval/         → test data, expected outputs (immutable)       │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─── Agent loops forever ───────────────────────────────────────┐
+│                                                               │
+│  1. Modify artifact.md with an idea                           │
+│  2. git commit                                                │
+│  3. bash evaluate.sh > run.log 2>&1                           │
+│  4. grep "^score:" run.log                                    │
+│  5. Score improved? → keep commit                             │
+│     Score worse?    → git reset --hard HEAD~1                 │
+│  6. Log to results.tsv                                        │
+│  7. GOTO 1 (never stop, never ask permission)                 │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
 ```
-
-## Rules
-
-- **program.md** is the agent's instructions. Human edits this.
-- **artifact.md** (or whatever file is configured) is what the agent modifies. Agent edits this.
-- **evaluate.sh** is the immutable scoring harness. Nobody edits this during a run.
-- **results.tsv** logs all experiments. Untracked by git — don't commit it.
-- Experiments run on dedicated branches: `autoloop/<tag>`
-- The agent runs autonomously and does not stop to ask permission.
-
-## To start a run
-
-Open this repo in Claude Code (or any agent) and say:
-
-```
-Read program.md and let's kick off a new experiment. Let's do the setup first.
-```
-
-## Before first use
-
-1. Replace `artifact.md` with whatever you're optimizing
-2. Configure `evaluate.sh` with your scoring logic (must output `score: <number>`)
-3. Fill in the `[CONFIGURE]` section in `program.md`
